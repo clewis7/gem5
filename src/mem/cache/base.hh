@@ -50,6 +50,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include "base/addr_range.hh"
 #include "base/compiler.hh"
@@ -101,17 +102,13 @@ class BaseCache : public ClockedObject
 {
   protected:
     struct AccessPatternState {
-        bool valid;
-        Addr lastLine;
-        int64_t lastStride;
-
-        AccessPatternState()
-            : valid(false), lastLine(0), lastStride(0)
-        {}
+        bool valid = false;
+        Addr lastLine = 0;
+        int64_t lastStride = 0;
     };
 
     // Per-requestor pattern-tracking state
-    std::vector<AccessPatternState> accessPatternState;
+    std::unordered_map<Addr, AccessPatternState> accessPatternState;
 
   protected:
     /**
@@ -662,7 +659,7 @@ class BaseCache : public ClockedObject
      */
     virtual void doWritebacks(PacketList& writebacks, Tick forward_time) = 0;
 
-    void classifyAndRecordAccessPattern(RequestorID rid, Addr addr, bool is_read);
+    void classifyAndRecordAccessPattern(Addr pc, Addr addr, bool is_read);
 
     /**
      * Send writebacks down the memory hierarchy in atomic mode
@@ -1161,18 +1158,18 @@ class BaseCache : public ClockedObject
 
         /** Data pattern access */
         // Reads
-        statistics::Vector rdSameLineAccesses;
-        statistics::Vector rdSequentialAccesses;
-        statistics::Vector rdStreamAccesses;
-        statistics::Vector rdBackwardsAccesses;
-        statistics::Vector rdRandomAccesses;
+        statistics::Scalar rdSameLineAccesses;
+        statistics::Scalar rdSequentialAccesses;
+        statistics::Scalar rdStreamAccesses;
+        statistics::Scalar rdBackwardsAccesses;
+        statistics::Scalar rdRandomAccesses;
 
         // Writes
-        statistics::Vector wrSameLineAccesses;
-        statistics::Vector wrSequentialAccesses;
-        statistics::Vector wrStreamAccesses;
-        statistics::Vector wrBackwardsAccesses;
-        statistics::Vector wrRandomAccesses;
+        statistics::Scalar wrSameLineAccesses;
+        statistics::Scalar wrSequentialAccesses;
+        statistics::Scalar wrStreamAccesses;
+        statistics::Scalar wrBackwardsAccesses;
+        statistics::Scalar wrRandomAccesses;
 
         /**
          * Number of data contractions (blocks that had their compression
