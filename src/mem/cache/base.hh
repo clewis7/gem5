@@ -1165,11 +1165,11 @@ class BaseCache : public ClockedObject
         statistics::Scalar rdRandomAccesses;
 
         // Writes
-        statistics::Scalar wrSameLineAccesses;
-        statistics::Scalar wrSequentialAccesses;
-        statistics::Scalar wrStreamAccesses;
-        statistics::Scalar wrBackwardsAccesses;
-        statistics::Scalar wrRandomAccesses;
+        // statistics::Scalar wrSameLineAccesses;
+        // statistics::Scalar wrSequentialAccesses;
+        // statistics::Scalar wrStreamAccesses;
+        // statistics::Scalar wrBackwardsAccesses;
+        // statistics::Scalar wrRandomAccesses;
 
         /**
          * Number of data contractions (blocks that had their compression

@@ -411,6 +411,10 @@ BaseCache::classifyAndRecordAccessPattern(Addr pc,
                                           Addr addr,
                                           bool is_read)
 {
+    if (!is_read) {
+        return;
+    }
+
     Addr line = addr / blkSize;
 
     auto &st = accessPatternState[pc];
@@ -446,20 +450,26 @@ BaseCache::classifyAndRecordAccessPattern(Addr pc,
         st.lastLine = line;
     }
 
+    if (same_line)       stats.rdSameLineAccesses++;
+    else if (sequential) stats.rdSequentialAccesses++;
+    else if (stream)     stats.rdStreamAccesses++;
+    else if (backwards)  stats.rdBackwardsAccesses++;
+    else                 stats.rdRandomAccesses++;
+
     // --- READ vs WRITE STAT UPDATE ---
-    if (is_read) {
-        if (same_line)       stats.rdSameLineAccesses++;
-        else if (sequential) stats.rdSequentialAccesses++;
-        else if (stream)     stats.rdStreamAccesses++;
-        else if (backwards)  stats.rdBackwardsAccesses++;
-        else                 stats.rdRandomAccesses++;
-    } else {
-        if (same_line)       stats.wrSameLineAccesses++;
-        else if (sequential) stats.wrSequentialAccesses++;
-        else if (stream)     stats.wrStreamAccesses++;
-        else if (backwards)  stats.wrBackwardsAccesses++;
-        else                 stats.wrRandomAccesses++;
-    }
+    // if (is_read) {
+    //     if (same_line)       stats.rdSameLineAccesses++;
+    //     else if (sequential) stats.rdSequentialAccesses++;
+    //     else if (stream)     stats.rdStreamAccesses++;
+    //     else if (backwards)  stats.rdBackwardsAccesses++;
+    //     else                 stats.rdRandomAccesses++;
+    // } else {
+    //     if (same_line)       stats.wrSameLineAccesses++;
+    //     else if (sequential) stats.wrSequentialAccesses++;
+    //     else if (stream)     stats.wrStreamAccesses++;
+    //     else if (backwards)  stats.wrBackwardsAccesses++;
+    //     else                 stats.wrRandomAccesses++;
+    // }
 }
 
 void
@@ -2368,16 +2378,16 @@ BaseCache::CacheStats::CacheStats(BaseCache &c)
              "Number of reads that accessed previous lines"),
     ADD_STAT(rdRandomAccesses, statistics::units::Count::get(),
              "Number of reads that accessed random lines"),
-    ADD_STAT(wrSameLineAccesses, statistics::units::Count::get(),
-             "Number of writes that accessed the same line"),
-    ADD_STAT(wrSequentialAccesses, statistics::units::Count::get(),
-             "Number of writes that accessed sequential lines"),
-    ADD_STAT(wrStreamAccesses, statistics::units::Count::get(),
-             "Number of writes that were stream accesses"),
-    ADD_STAT(wrBackwardsAccesses, statistics::units::Count::get(),
-             "Number of writes that accessed previous lines"),
-    ADD_STAT(wrRandomAccesses, statistics::units::Count::get(),
-             "Number of writes that accessed random lines"),
+    // ADD_STAT(wrSameLineAccesses, statistics::units::Count::get(),
+    //          "Number of writes that accessed the same line"),
+    // ADD_STAT(wrSequentialAccesses, statistics::units::Count::get(),
+    //          "Number of writes that accessed sequential lines"),
+    // ADD_STAT(wrStreamAccesses, statistics::units::Count::get(),
+    //          "Number of writes that were stream accesses"),
+    // ADD_STAT(wrBackwardsAccesses, statistics::units::Count::get(),
+    //          "Number of writes that accessed previous lines"),
+    // ADD_STAT(wrRandomAccesses, statistics::units::Count::get(),
+    //          "Number of writes that accessed random lines"),
     ADD_STAT(dataExpansions, statistics::units::Count::get(),
              "number of data expansions"),
     ADD_STAT(dataContractions, statistics::units::Count::get(),
@@ -2623,11 +2633,11 @@ BaseCache::CacheStats::regStats()
 
 
     // Writes
-    wrSameLineAccesses.flags(total | nozero | nonan);
-    wrSequentialAccesses.flags(total | nozero | nonan);
-    wrStreamAccesses.flags(total | nozero | nonan);
-    wrBackwardsAccesses.flags(total | nozero | nonan);
-    wrRandomAccesses.flags(total | nozero | nonan);
+    // wrSameLineAccesses.flags(total | nozero | nonan);
+    // wrSequentialAccesses.flags(total | nozero | nonan);
+    // wrStreamAccesses.flags(total | nozero | nonan);
+    // wrBackwardsAccesses.flags(total | nozero | nonan);
+    // wrRandomAccesses.flags(total | nozero | nonan);
 }
 
 void
