@@ -49,6 +49,7 @@
 #include <cassert>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "base/addr_range.hh"
 #include "base/compiler.hh"
@@ -98,6 +99,20 @@ struct BaseCacheParams;
  */
 class BaseCache : public ClockedObject
 {
+  protected:
+    struct AccessPatternState {
+        bool valid;
+        Addr lastLine;
+        int64_t lastStride;
+
+        AccessPatternState()
+            : valid(false), lastLine(0), lastStride(0)
+        {}
+    };
+
+    // Per-requestor pattern-tracking state
+    std::vector<AccessPatternState> accessPatternState;
+
   protected:
     /**
      * Indexes to enumerate the MSHR queues.
@@ -647,6 +662,8 @@ class BaseCache : public ClockedObject
      */
     virtual void doWritebacks(PacketList& writebacks, Tick forward_time) = 0;
 
+    void classifyAndRecordAccessPattern(RequestorID rid, Addr addr, bool is_read);
+
     /**
      * Send writebacks down the memory hierarchy in atomic mode
      */
@@ -1141,6 +1158,21 @@ class BaseCache : public ClockedObject
 
         /** Number of data expansions. */
         statistics::Scalar dataExpansions;
+
+        /** Data pattern access */
+        // Reads
+        statistics::Vector rdSameLineAccesses;
+        statistics::Vector rdSequentialAccesses;
+        statistics::Vector rdStreamAccesses;
+        statistics::Vector rdBackwardsAccesses;
+        statistics::Vector rdRandomAccesses;
+
+        // Writes
+        statistics::Vector wrSameLineAccesses;
+        statistics::Vector wrSequentialAccesses;
+        statistics::Vector wrStreamAccesses;
+        statistics::Vector wrBackwardsAccesses;
+        statistics::Vector wrRandomAccesses;
 
         /**
          * Number of data contractions (blocks that had their compression

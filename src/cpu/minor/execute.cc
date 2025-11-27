@@ -642,6 +642,7 @@ Execute::issue(ThreadID thread_id)
                 } else if (!fu_is_capable || fu->alreadyPushed()) {
                     /* Skip */
                     if (!fu_is_capable) {
+                        cpu.executeStats[thread_id]->numStructuralHazards++;
                         DPRINTF(MinorExecute, "Can't issue as FU: %d isn't"
                             " capable\n", fu_index);
                     } else {
@@ -1284,6 +1285,7 @@ Execute::commit(ThreadID thread_id, bool only_commit_microops, bool discard,
                             inst->id.execSeqNum &&
                         lsq.getLastMemBarrier(thread_id) != 0)
                     {
+                        cpu.executeStats[thread_id]->numRAWstalls++;
                         DPRINTF(MinorExecute, "Not committing inst: %s yet"
                             " as there are incomplete barriers in flight\n",
                             *inst);
