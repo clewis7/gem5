@@ -949,7 +949,11 @@ ExecuteCPUStats::ExecuteCPUStats(statistics::Group *parent, int thread_id)
              "Number of times the vector registers were written"),
     ADD_STAT(numDiscardedOps, statistics::units::Count::get(),
              "Number of ops (including micro ops) which were discarded before "
-             "commit")
+             "commit"),
+    ADD_STAT(numStructuralHazards, statistics::units::Count::get(),
+             "Number of stalls from too few FU units"),
+    ADD_STAT(numRAWstalls, statistics::units::Count::get(),
+             "Number of RAW stalls")
 {
     numStoreInsts = numMemRefs - numLoadInsts;
 

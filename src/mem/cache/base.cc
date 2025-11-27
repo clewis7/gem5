@@ -124,6 +124,8 @@ BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
 
     tempBlock = new TempCacheBlk(blkSize);
 
+    accessPatternState.clear();
+
     tags->tagsInit();
     if (prefetcher)
         prefetcher->setCache(this);
@@ -401,11 +403,77 @@ BaseCache::handleTimingReqMiss(PacketPtr pkt, MSHR *mshr, CacheBlk *blk,
 }
 
 void
+BaseCache::classifyAndRecordAccessPattern(RequestorID rid,
+                                          Addr addr,
+                                          bool is_read)
+{
+    Addr line = addr / blkSize;
+
+    if (rid >= accessPatternState.size())
+        accessPatternState.resize(rid + 1);
+
+    auto &st = accessPatternState[rid];
+
+    bool same_line = false;
+    bool sequential = false;
+    bool stream = false;
+    bool backwards = false;
+    bool random = false;
+
+    if (!st.valid) {
+        st.valid = true;
+        st.lastLine = line;
+        st.lastStride = 0;
+        random = true;
+    } else {
+        int64_t stride = (int64_t)line - (int64_t)st.lastLine;
+
+        if (stride == 0)
+            same_line = true;
+        else if (stride == 1) {
+            if (st.lastStride == 1)
+                stream = true;
+            else
+                sequential = true;
+        }
+        else if (stride == -1)
+            backwards = true;
+        else
+            random = true;
+
+        st.lastStride = stride;
+        st.lastLine = line;
+    }
+
+    // --- READ vs WRITE STAT UPDATE ---
+    if (is_read) {
+        if (same_line)       stats.rdSameLineAccesses[rid]++;
+        else if (sequential) stats.rdSequentialAccesses[rid]++;
+        else if (stream)     stats.rdStreamAccesses[rid]++;
+        else if (backwards)  stats.rdBackwardsAccesses[rid]++;
+        else                 stats.rdRandomAccesses[rid]++;
+    } else {
+        if (same_line)       stats.wrSameLineAccesses[rid]++;
+        else if (sequential) stats.wrSequentialAccesses[rid]++;
+        else if (stream)     stats.wrStreamAccesses[rid]++;
+        else if (backwards)  stats.wrBackwardsAccesses[rid]++;
+        else                 stats.wrRandomAccesses[rid]++;
+    }
+}
+
+void
 BaseCache::recvTimingReq(PacketPtr pkt)
 {
     // anything that is merely forwarded pays for the forward latency and
     // the delay provided by the crossbar
     Tick forward_time = clockEdge(forwardLatency) + pkt->headerDelay;
+
+    if (pkt->isRequest() && pkt->req) {
+        classifyAndRecordAccessPattern(
+            pkt->req->requestorId(),
+            pkt->getAddr(),
+            pkt->isRead());
+    }
 
     if (pkt->cmd == MemCmd::LockedRMWWriteReq) {
         // For LockedRMW accesses, we mark the block inaccessible after the
@@ -645,6 +713,13 @@ BaseCache::recvAtomic(PacketPtr pkt)
     CacheBlk *blk = nullptr;
     PacketList writebacks;
     bool satisfied = access(pkt, blk, lat, writebacks);
+
+    if (pkt->isRequest() && pkt->req) {
+        classifyAndRecordAccessPattern(
+            pkt->req->requestorId(),
+            pkt->getAddr(),
+            pkt->isRead());
+    }
 
     if (pkt->isClean() && blk && blk->isSet(CacheBlk::DirtyBit)) {
         // A cache clean opearation is looking for a dirty
@@ -2269,6 +2344,26 @@ BaseCache::CacheStats::CacheStats(BaseCache &c)
              "average overall mshr uncacheable latency"),
     ADD_STAT(replacements, statistics::units::Count::get(),
              "number of replacements"),
+    ADD_STAT(rdSameLineAccesses, statistics::units::Count::get(),
+             "Number of reads that accessed the same line"),
+    ADD_STAT(rdSequentialAccesses, statistics::units::Count::get(),
+             "Number of reads that accessed sequential lines"),
+    ADD_STAT(rdStreamAccesses, statistics::units::Count::get(),
+             "Number of reads that were stream accesses"),
+    ADD_STAT(rdBackwardsAccesses, statistics::units::Count::get(),
+             "Number of reads that accessed previous lines"),
+    ADD_STAT(rdRandomAccesses, statistics::units::Count::get(),
+             "Number of reads that accessed random lines"),
+    ADD_STAT(wrSameLineAccesses, statistics::units::Count::get(),
+             "Number of writes that accessed the same line"),
+    ADD_STAT(wrSequentialAccesses, statistics::units::Count::get(),
+             "Number of writes that accessed sequential lines"),
+    ADD_STAT(wrStreamAccesses, statistics::units::Count::get(),
+             "Number of writes that were stream accesses"),
+    ADD_STAT(wrBackwardsAccesses, statistics::units::Count::get(),
+             "Number of writes that accessed previous lines"),
+    ADD_STAT(wrRandomAccesses, statistics::units::Count::get(),
+             "Number of writes that accessed random lines"),
     ADD_STAT(dataExpansions, statistics::units::Count::get(),
              "number of data expansions"),
     ADD_STAT(dataContractions, statistics::units::Count::get(),
@@ -2278,6 +2373,7 @@ BaseCache::CacheStats::CacheStats(BaseCache &c)
     for (int idx = 0; idx < MemCmd::NUM_MEM_CMDS; ++idx)
         cmd[idx].reset(new CacheCmdStats(c, MemCmd(idx).toString()));
 }
+
 
 void
 BaseCache::CacheStats::regStats()
@@ -2502,6 +2598,49 @@ BaseCache::CacheStats::regStats()
 
     dataExpansions.flags(nozero | nonan);
     dataContractions.flags(nozero | nonan);
+
+
+    // Reads
+    rdSameLineAccesses.flags(total | nozero | nonan);
+    rdSequentialAccesses.flags(total | nozero | nonan);
+    rdStreamAccesses.flags(total | nozero | nonan);
+    rdBackwardsAccesses.flags(total | nozero | nonan);
+    rdRandomAccesses.flags(total | nozero | nonan);
+
+    rdSameLineAccesses.init(max_requestors);
+    rdSequentialAccesses.init(max_requestors);
+    rdStreamAccesses.init(max_requestors);
+    rdBackwardsAccesses.init(max_requestors);
+    rdRandomAccesses.init(max_requestors);
+
+    for (int i = 0; i < max_requestors; i++) {
+        rdSameLineAccesses.subname(i, system->getRequestorName(i));
+        rdSequentialAccesses.subname(i, system->getRequestorName(i));
+        rdStreamAccesses.subname(i, system->getRequestorName(i));
+        rdBackwardsAccesses.subname(i, system->getRequestorName(i));
+        rdRandomAccesses.subname(i, system->getRequestorName(i));
+    }
+
+    // Writes
+    wrSameLineAccesses.flags(total | nozero | nonan);
+    wrSequentialAccesses.flags(total | nozero | nonan);
+    wrStreamAccesses.flags(total | nozero | nonan);
+    wrBackwardsAccesses.flags(total | nozero | nonan);
+    wrRandomAccesses.flags(total | nozero | nonan);
+
+    wrSameLineAccesses.init(max_requestors);
+    wrSequentialAccesses.init(max_requestors);
+    wrStreamAccesses.init(max_requestors);
+    wrBackwardsAccesses.init(max_requestors);
+    wrRandomAccesses.init(max_requestors);
+
+    for (int i = 0; i < max_requestors; i++) {
+        wrSameLineAccesses.subname(i, system->getRequestorName(i));
+        wrSequentialAccesses.subname(i, system->getRequestorName(i));
+        wrStreamAccesses.subname(i, system->getRequestorName(i));
+        wrBackwardsAccesses.subname(i, system->getRequestorName(i));
+        wrRandomAccesses.subname(i, system->getRequestorName(i));
+}
 }
 
 void

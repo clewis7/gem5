@@ -771,6 +771,12 @@ class BaseCPU : public ClockedObject
 
         /* Number of ops discarded before committing */
         statistics::Scalar numDiscardedOps;
+
+        /* Number of structural hazards due when FU not available */
+        statistics::Scalar numStructuralHazards;
+
+        /* Number of RAW stalls*/
+        statistics::Scalar numRAWstalls;
     };
 
     struct CommitCPUStats: public statistics::Group
