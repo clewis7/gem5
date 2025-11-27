@@ -407,16 +407,13 @@ BaseCache::handleTimingReqMiss(PacketPtr pkt, MSHR *mshr, CacheBlk *blk,
 }
 
 void
-BaseCache::classifyAndRecordAccessPattern(RequestorID rid,
+BaseCache::classifyAndRecordAccessPattern(Addr pc,
                                           Addr addr,
                                           bool is_read)
 {
     Addr line = addr / blkSize;
 
-    if (rid >= accessPatternState.size())
-        accessPatternState.resize(rid + 1);
-
-    auto &st = accessPatternState[rid];
+    auto &st = accessPatternState[pc];
 
     bool same_line = false;
     bool sequential = false;
@@ -451,17 +448,17 @@ BaseCache::classifyAndRecordAccessPattern(RequestorID rid,
 
     // --- READ vs WRITE STAT UPDATE ---
     if (is_read) {
-        if (same_line)       stats.rdSameLineAccesses[rid]++;
-        else if (sequential) stats.rdSequentialAccesses[rid]++;
-        else if (stream)     stats.rdStreamAccesses[rid]++;
-        else if (backwards)  stats.rdBackwardsAccesses[rid]++;
-        else                 stats.rdRandomAccesses[rid]++;
+        if (same_line)       stats.rdSameLineAccesses++;
+        else if (sequential) stats.rdSequentialAccesses++;
+        else if (stream)     stats.rdStreamAccesses++;
+        else if (backwards)  stats.rdBackwardsAccesses++;
+        else                 stats.rdRandomAccesses++;
     } else {
-        if (same_line)       stats.wrSameLineAccesses[rid]++;
-        else if (sequential) stats.wrSequentialAccesses[rid]++;
-        else if (stream)     stats.wrStreamAccesses[rid]++;
-        else if (backwards)  stats.wrBackwardsAccesses[rid]++;
-        else                 stats.wrRandomAccesses[rid]++;
+        if (same_line)       stats.wrSameLineAccesses++;
+        else if (sequential) stats.wrSequentialAccesses++;
+        else if (stream)     stats.wrStreamAccesses++;
+        else if (backwards)  stats.wrBackwardsAccesses++;
+        else                 stats.wrRandomAccesses++;
     }
 }
 
@@ -472,9 +469,9 @@ BaseCache::recvTimingReq(PacketPtr pkt)
     // the delay provided by the crossbar
     Tick forward_time = clockEdge(forwardLatency) + pkt->headerDelay;
 
-    if (pkt->isRequest() && pkt->req) {
+    if (pkt->isRequest() && pkt->req->hasPC()) {
         classifyAndRecordAccessPattern(
-            pkt->req->requestorId(),
+            pkt->req->getPC(),
             pkt->getAddr(),
             pkt->isRead());
     }
@@ -718,9 +715,9 @@ BaseCache::recvAtomic(PacketPtr pkt)
     PacketList writebacks;
     bool satisfied = access(pkt, blk, lat, writebacks);
 
-    if (pkt->isRequest() && pkt->req) {
+    if (pkt->isRequest() && pkt->req->hasPC()) {
         classifyAndRecordAccessPattern(
-            pkt->req->requestorId(),
+            pkt->req->getPC(),
             pkt->getAddr(),
             pkt->isRead());
     }
@@ -2624,19 +2621,6 @@ BaseCache::CacheStats::regStats()
     rdBackwardsAccesses.flags(total | nozero | nonan);
     rdRandomAccesses.flags(total | nozero | nonan);
 
-    rdSameLineAccesses.init(max_requestors);
-    rdSequentialAccesses.init(max_requestors);
-    rdStreamAccesses.init(max_requestors);
-    rdBackwardsAccesses.init(max_requestors);
-    rdRandomAccesses.init(max_requestors);
-
-    for (int i = 0; i < max_requestors; i++) {
-        rdSameLineAccesses.subname(i, system->getRequestorName(i));
-        rdSequentialAccesses.subname(i, system->getRequestorName(i));
-        rdStreamAccesses.subname(i, system->getRequestorName(i));
-        rdBackwardsAccesses.subname(i, system->getRequestorName(i));
-        rdRandomAccesses.subname(i, system->getRequestorName(i));
-    }
 
     // Writes
     wrSameLineAccesses.flags(total | nozero | nonan);
@@ -2644,20 +2628,6 @@ BaseCache::CacheStats::regStats()
     wrStreamAccesses.flags(total | nozero | nonan);
     wrBackwardsAccesses.flags(total | nozero | nonan);
     wrRandomAccesses.flags(total | nozero | nonan);
-
-    wrSameLineAccesses.init(max_requestors);
-    wrSequentialAccesses.init(max_requestors);
-    wrStreamAccesses.init(max_requestors);
-    wrBackwardsAccesses.init(max_requestors);
-    wrRandomAccesses.init(max_requestors);
-
-    for (int i = 0; i < max_requestors; i++) {
-        wrSameLineAccesses.subname(i, system->getRequestorName(i));
-        wrSequentialAccesses.subname(i, system->getRequestorName(i));
-        wrStreamAccesses.subname(i, system->getRequestorName(i));
-        wrBackwardsAccesses.subname(i, system->getRequestorName(i));
-        wrRandomAccesses.subname(i, system->getRequestorName(i));
-}
 }
 
 void
