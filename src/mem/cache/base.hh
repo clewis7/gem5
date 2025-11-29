@@ -1163,6 +1163,7 @@ class BaseCache : public ClockedObject
         statistics::Scalar rdStreamAccesses;
         statistics::Scalar rdBackwardsAccesses;
         statistics::Scalar rdRandomAccesses;
+        statistics::Scalar rdStridedAccesses;
 
         // Writes
         // statistics::Scalar wrSameLineAccesses;

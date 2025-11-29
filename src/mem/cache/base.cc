@@ -423,6 +423,7 @@ BaseCache::classifyAndRecordAccessPattern(Addr pc,
     bool sequential = false;
     bool stream = false;
     bool backwards = false;
+    bool strided = false;
     bool random = false;
 
     if (!st.valid) {
@@ -441,8 +442,16 @@ BaseCache::classifyAndRecordAccessPattern(Addr pc,
             else
                 sequential = true;
         }
-        else if (stride == -1)
+        else if (stride == -1) {
             backwards = true;
+        }
+        else if (stride > 1 || stride < -1) {
+            if (stride == st.lastStride) {
+                strided = true;
+            } else {
+                random = true;
+            }
+        }
         else
             random = true;
 
@@ -454,6 +463,7 @@ BaseCache::classifyAndRecordAccessPattern(Addr pc,
     else if (sequential) stats.rdSequentialAccesses++;
     else if (stream)     stats.rdStreamAccesses++;
     else if (backwards)  stats.rdBackwardsAccesses++;
+    else if (strided)    stats.rdStridedAccesses++;
     else                 stats.rdRandomAccesses++;
 
     // --- READ vs WRITE STAT UPDATE ---
@@ -2378,6 +2388,8 @@ BaseCache::CacheStats::CacheStats(BaseCache &c)
              "Number of reads that accessed previous lines"),
     ADD_STAT(rdRandomAccesses, statistics::units::Count::get(),
              "Number of reads that accessed random lines"),
+    ADD_STAT(rdStridedAccesses, statistics::units::Count::get(),
+             "Number of reads that accessed in |stride| > 1"),
     // ADD_STAT(wrSameLineAccesses, statistics::units::Count::get(),
     //          "Number of writes that accessed the same line"),
     // ADD_STAT(wrSequentialAccesses, statistics::units::Count::get(),
@@ -2630,6 +2642,7 @@ BaseCache::CacheStats::regStats()
     rdStreamAccesses.flags(total | nozero | nonan);
     rdBackwardsAccesses.flags(total | nozero | nonan);
     rdRandomAccesses.flags(total | nozero | nonan);
+    rdStridedAccesses.flags(total | nozero | nonan);
 
 
     // Writes
