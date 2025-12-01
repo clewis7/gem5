@@ -24,10 +24,10 @@ AdaptivePrefetcher::AdaptivePrefetcher(const AdaptivePrefetcherParams &p)
       fixedStrideCount(0), // fixed |stride| > 1
       backwardCount(0), // backward 
 
-      lastAbsStride(0),
       lastLine(0),
       lastStride(0),
       lastValid(false),
+      stableStrideCount(0),
 
       lastModeSwitchTick(curTick())
 {
@@ -62,16 +62,17 @@ AdaptivePrefetcher::regStats()
 
 
 void
-AdaptivePrefetcher::chargeTimeInCurrentMode(Tick now)
+AdaptivePrefetcher::chargeTimeInCurrentMode(Tick now, int oldMode, int newMode)
 {
     Tick delta = now - lastModeSwitchTick;
-    switch (currentMode) {
+    switch (oldMode) {
       case 0: timeInMode0 += delta; break;
       case 1: timeInMode1 += delta; break;
       case 2: timeInMode2 += delta; break;
       default: break;
     }
     lastModeSwitchTick = now;
+    currentMode = newMode;
 }
 
 void
@@ -89,17 +90,18 @@ AdaptivePrefetcher::chooseMode()
     double p_stride = double(fixedStrideCount) / double(total);
 
     int oldMode = currentMode;
+    int newMode;
 
-    if (p_random > 0.6 || p_same > 0.6) {
-        currentMode = 0; // disabled
-    } else if ((p_next + p_stream + p_backward + p_stride) > 0.6) {
-        currentMode = 1; // stride/stream
+    if (p_random > 0.85) {
+        newMode = 0; // disabled
+    } else if ((p_same + p_next + p_stream + p_backward + p_stride) > 0.6) {
+        newMode = 1; // stride/stream
     } else {
-        currentMode = 2; // tagged/BOP
+        newMode = 2; // tagged/BOP
     }
 
-    if (currentMode != oldMode) {
-        chargeTimeInCurrentMode(curTick());
+    if (newMode != oldMode) {
+        chargeTimeInCurrentMode(curTick(), oldMode, newMode);
         numModeSwitches++;
         DPRINTF(AdaptivePrefetcher, "Switching mode %d -> %d "
                 "(p_next=%.2f p_stream=%.2f p_random=%.2f p_backward=%.2f p_same=%.2f p_stride=%.2f)\n",
@@ -107,7 +109,6 @@ AdaptivePrefetcher::chooseMode()
     }
 
     // Reset window
-    windowAccesses = 0;
     streamCount = randomCount = sameLineCount = backwardCount = nextLineCount = fixedStrideCount = 0 ;
 }
 
@@ -125,45 +126,48 @@ AdaptivePrefetcher::updatePatternStats(const PrefetchInfo &pf_info)
     if (!lastValid) {
         lastLine = line;
         lastStride = 0;
-        lastAbsStride = 0;
         lastValid = true;
         randomCount++;
-        windowAccesses++;
+        stableStrideCount=0;
         return;
     }
 
     int64_t stride = (int64_t)line - (int64_t)lastLine;
-    uint64_t absStride = llabs(stride);
 
     if (stride == 0) {
         sameLineCount++;
+        stableStrideCount=0;
     } 
     else if (stride == 1) {
         if (lastStride == 1)
             streamCount++;
         else
             nextLineCount++;
+
+        stableStrideCount=0;
     } 
     else if (stride == -1) {
-        if (lastStride == -1)    
-            streamCount++;
-        else
             backwardCount++;
-    } 
-    else if (absStride > 1) {
-        if (absStride == lastAbsStride)
-            fixedStrideCount++;
-        else 
-            randomCount++;
+            stableStrideCount=0;
     }
     else {
-        randomCount++;
+        if (stride == lastStride) {
+            stableStrideCount++;
+        } else {
+            stableStrideCount=0;
+        }
+
+        if (stableStrideCount >=1) {
+            fixedStrideCount++;
+            // DPRINTF(AdaptivePrefetcher, "FIXED STRIDE %ld detected\n", stride);
+        } else {
+            randomCount++;
+            // DPRINTF(AdaptivePrefetcher, "RANDOM STRIDE %ld detected\n", stride);
+        }
     }
 
     lastLine = line;
     lastStride = stride;
-    lastAbsStride = absStride;
-    windowAccesses++;
 }
 
 void
@@ -172,33 +176,10 @@ AdaptivePrefetcher::calculatePrefetch(
     std::vector<AddrPriority> &addresses,
     const CacheAccessor &cache)
 {
-    // Update pattern stats
-    updatePatternStats(pfi);
-
-    // Decide mode at window boundary
-    if (windowAccesses >= windowSize) {
-        chooseMode();
-    }
-
-    // Delegate based on current mode
-    switch (currentMode) {
-      case 0:
-        // Disabled: do nothing
-        break;
-
-      case 1:
-        if (mode1) {
-            mode1->calculatePrefetch(pfi, addresses, cache);
-        }
-        break;
-
-      case 2:
-        if (mode2) {
-            mode2->calculatePrefetch(pfi, addresses, cache);
-        }
-        break;
-      default:
-        break;
+     if (currentMode == 1 && mode1) {
+        mode1->calculatePrefetch(pfi, addresses, cache);
+    } else if (currentMode == 2 && mode2) {
+        mode2->calculatePrefetch(pfi, addresses, cache);
     }
 }
 
@@ -225,16 +206,23 @@ AdaptivePrefetcher::notify(const CacheAccessProbeArg &acc,
 {
     Queued::notify(acc, pfi);
 
-    // 2) Safety guard
-    if (!acc.pkt || !acc.pkt->hasData())
+
+    if (!acc.pkt->isRead() || acc.pkt->req->isInstFetch())
         return;
 
-    // 3) Forward to BOTH modes to keep their stats correct
-    if (mode1)
+    if (currentMode == 1 && mode1)
         mode1->notify(acc, pfi);
-
-    if (mode2)
+    else if (currentMode == 2 && mode2)
         mode2->notify(acc, pfi);
+
+    // Update pattern stats
+    updatePatternStats(pfi);
+
+    // Decide mode at window boundary
+    if (++windowAccesses >= windowSize) {
+        chooseMode();
+        windowAccesses = 0;
+    }
 }
 
 

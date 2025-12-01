@@ -61,7 +61,7 @@ class AdaptivePrefetcher : public Queued
     Addr lastLine;
     int64_t lastStride;
     bool lastValid;
-    uint64_t lastAbsStride; 
+    uint32_t stableStrideCount;
 
     // Stats
     statistics::Scalar numModeSwitches;
@@ -74,7 +74,7 @@ class AdaptivePrefetcher : public Queued
     // Helpers
     void updatePatternStats(const PrefetchInfo &pf_info);
     void chooseMode();
-    void chargeTimeInCurrentMode(Tick now);
+    void chargeTimeInCurrentMode(Tick now, int oldMode, int newMode);
 };
 
 }
