@@ -90,7 +90,7 @@ AdaptivePrefetcher::chooseMode()
 
     int oldMode = currentMode;
 
-    if (p_random > 0.6) {
+    if (p_random > 0.6 || p_same > 0.6) {
         currentMode = 0; // disabled
     } else if ((p_next + p_stream + p_backward + p_stride) > 0.6) {
         currentMode = 1; // stride/stream
