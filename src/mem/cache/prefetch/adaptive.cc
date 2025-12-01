@@ -13,7 +13,7 @@ AdaptivePrefetcher::AdaptivePrefetcher(const AdaptivePrefetcherParams &p)
     : Queued(p),
       mode1(p.mode1),
       mode2(p.mode2),
-      currentMode(2),
+      currentMode(1),
       windowSize(p.window_size),
       windowAccesses(0),
 
@@ -82,6 +82,9 @@ AdaptivePrefetcher::chooseMode()
     if (total == 0)
         return;
 
+    static const double SWITCH_THRESH = 0.75;
+    static const Tick MIN_RESIDENCY = 200000; // 200k cycles
+
     double p_next    = double(nextLineCount)    / double(total);
     double p_stream = double(streamCount) / double(total);
     double p_random = double(randomCount) / double(total);
@@ -89,27 +92,47 @@ AdaptivePrefetcher::chooseMode()
     double p_same     = double(sameLineCount) / double(total);
     double p_stride = double(fixedStrideCount) / double(total);
 
-    int oldMode = currentMode;
-    int newMode;
+    const double alpha = 0.90; // smoothing strength
 
-    if (p_random > 0.85) {
-        newMode = 0; // disabled
-    } else if ((p_same + p_next + p_stream + p_backward + p_stride) > 0.6) {
-        newMode = 1; // stride/stream
+    Pnext     = alpha * Pnext     + (1.0 - alpha) * p_next;
+    Pstream   = alpha * Pstream   + (1.0 - alpha) * p_stream;
+    Prandom   = alpha * Prandom   + (1.0 - alpha) * p_random;
+    Pbackward = alpha * Pbackward + (1.0 - alpha) * p_backward;
+    Psame     = alpha * Psame     + (1.0 - alpha) * p_same;
+    Pstride   = alpha * Pstride   + (1.0 - alpha) * p_stride;
+
+    double Pstructured =
+        Psame + Pnext + Pstream + Pbackward + Pstride;
+
+    int oldMode = currentMode;
+    int proposedMode = currentMode;
+
+    if (Prandom > SWITCH_THRESH) {
+        proposedMode = 0; // disabled
+    } else if (Pstructured > SWITCH_THRESH) {
+        proposedMode = 1; // stride/stream
     } else {
-        newMode = 2; // tagged/BOP
+        proposedMode = 2; // tagged/BOP
     }
 
-    if (newMode != oldMode) {
-        chargeTimeInCurrentMode(curTick(), oldMode, newMode);
+    Tick now = curTick();
+
+    if (proposedMode != currentMode && (now - lastModeSwitchTick) > MIN_RESIDENCY)
+    {
+        chargeTimeInCurrentMode(curTick(), oldMode, proposedMode);
         numModeSwitches++;
         DPRINTF(AdaptivePrefetcher, "Switching mode %d -> %d "
                 "(p_next=%.2f p_stream=%.2f p_random=%.2f p_backward=%.2f p_same=%.2f p_stride=%.2f)\n",
                 oldMode, currentMode, p_next, p_stream, p_random, p_backward, p_same, p_stride);
     }
 
-    // Reset window
-    streamCount = randomCount = sameLineCount = backwardCount = nextLineCount = fixedStrideCount = 0 ;
+    nextLineCount    = uint64_t(nextLineCount    * 0.25);
+    streamCount      = uint64_t(streamCount      * 0.25);
+    randomCount      = uint64_t(randomCount      * 0.25);
+    backwardCount    = uint64_t(backwardCount    * 0.25);
+    sameLineCount    = uint64_t(sameLineCount    * 0.25);
+    fixedStrideCount = uint64_t(fixedStrideCount * 0.25);
+
 }
 
 void

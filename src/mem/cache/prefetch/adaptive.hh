@@ -63,6 +63,13 @@ class AdaptivePrefetcher : public Queued
     bool lastValid;
     uint32_t stableStrideCount;
 
+    double Pnext     = 0.0;
+    double Pstream   = 0.0;
+    double Prandom   = 0.0;
+    double Pbackward = 0.0;
+    double Psame     = 0.0;
+    double Pstride   = 0.0;
+
     // Stats
     statistics::Scalar numModeSwitches;
     statistics::Scalar timeInMode0;
