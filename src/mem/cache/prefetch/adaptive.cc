@@ -13,7 +13,7 @@ AdaptivePrefetcher::AdaptivePrefetcher(const AdaptivePrefetcherParams &p)
     : Queued(p),
       mode1(p.mode1),
       mode2(p.mode2),
-      currentMode(1),
+      currentMode(2),
       windowSize(p.window_size),
       windowAccesses(0),
 
