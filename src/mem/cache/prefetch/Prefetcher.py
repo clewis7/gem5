@@ -727,3 +727,23 @@ class PIFPrefetcher(QueuedPrefetcher):
         self.addEvent(
             HWPProbeEventRetiredInsts(self, simObj, "RetiredInstsPC")
         )
+
+
+class AdaptivePrefetcher(QueuedPrefetcher):
+    type = "AdaptivePrefetcher"
+    cxx_class = "gem5::prefetch::AdaptivePrefetcher"
+    cxx_header = "mem/cache/prefetch/adaptive.hh"
+
+    # --- Adaptive control parameters ---
+    window_size = Param.Int(256, "Number of accesses per adaptation window")
+
+    # --- Sub-prefetchers (your modes) ---
+    mode1 = Param.QueuedPrefetcher(
+        StridePrefetcher(),
+        "Mode 1 prefetcher (e.g., Stride)"
+    )
+
+    mode2 = Param.QueuedPrefetcher(
+        TaggedPrefetcher(),
+        "Mode 2 prefetcher (e.g., Tagged)"
+    )
